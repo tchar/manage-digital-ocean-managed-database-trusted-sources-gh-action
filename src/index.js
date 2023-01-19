@@ -1,14 +1,12 @@
-const fetch = require('node-fetch');
-const core = require('@actions/core');
+const fetch = require("node-fetch");
+const core = require("@actions/core");
 
 async function getIpAddress() {
-
-  const response = await fetch('https://api.ipify.org');
-  if ( !response.ok ) {
+  const response = await fetch("https://api.ipify.org");
+  if (!response.ok) {
     throw new Error("Couldn't get IP address");
   }
   return await response.text();
-
 }
 
 /**
@@ -16,10 +14,10 @@ async function getIpAddress() {
  * returns its index, otherwise, the function returns -1;
  */
 function findIpInRules(ipAddress, rules) {
-  for ( let i = 0; i < rules.length; i++ ) {
+  for (let i = 0; i < rules.length; i++) {
     const rule = rules[i];
-    if ( rule.type === 'ip_addr' && rule.value === ipAddress ) {
-      console.log("IP address already inside");
+    if (rule.type === "ip_addr" && rule.value === ipAddress) {
+      console.log("IP address already allowed in firewall");
       return i;
     }
   }
@@ -27,79 +25,68 @@ function findIpInRules(ipAddress, rules) {
 }
 
 async function main() {
-
   core.setCommandEcho(true);
 
   // get inputs
   const DATABASE_ID = core.getInput("database_id");
-  const DIGITALOCEAN_TOKEN = core.getInput("digitalocean_token")
-  const ACTION = core.getInput('action')
-
+  const DIGITALOCEAN_TOKEN = core.getInput("digitalocean_token");
+  const ACTION = core.getInput("action");
 
   // get Ip address of the runner
   const runnerIpAddress = await getIpAddress();
   console.log(runnerIpAddress);
 
-
   // get the list of trusted sources
   const resp = await fetch(`https://api.digitalocean.com/v2/databases/${DATABASE_ID}/firewall`, {
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${DIGITALOCEAN_TOKEN}`,
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${DIGITALOCEAN_TOKEN}`,
     },
   });
 
-  if ( !resp.ok ) {
+  if (!resp.ok) {
     throw Error("Error while trying to get the list of trusted sources");
   }
 
-  let firewallRules = (await resp.json()).rules;
-  if ( !firewallRules ) {
+  const firewallRules = (await resp.json()).rules;
+  if (!firewallRules) {
     throw Error("Missing firewall rules");
   }
 
-
   // Checking if the IP is already in the trusted sources
-  let indexOfIpInRules = findIpInRules(runnerIpAddress, firewallRules);
+  const indexOfIpInRules = findIpInRules(runnerIpAddress, firewallRules);
 
-  if ( indexOfIpInRules === -1 && ACTION === 'add') {
-
+  if ((indexOfIpInRules === -1) && (ACTION === "add")) {
     firewallRules.push({
-      type: 'ip_addr',
+      type: "ip_addr",
       value: runnerIpAddress,
     });
-
-  } else if ( indexOfIpInRules !== -1 && ACTION === 'remove' ) {
-
+  } else if ((indexOfIpInRules !== -1) && (ACTION === "remove")) {
     firewallRules.splice(indexOfIpInRules, 1);
-
   }
   else {
-
     console.log("Nothing to do");
     return;
-
   }
 
   // Modify the trusted sources
   const trustedSources = { rules: firewallRules };
   const respPut = await fetch(`https://api.digitalocean.com/v2/databases/${DATABASE_ID}/firewall`, {
-    method: 'put',
+    method: "put",
     headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${DIGITALOCEAN_TOKEN}`,
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${DIGITALOCEAN_TOKEN}`,
     },
     body: JSON.stringify(trustedSources),
   });
 
-  if ( !respPut.ok ) {
+  if (!respPut.ok) {
     throw new Error("Couldn't update trusted sources");
   }
-
 }
 
 try {
-  main();
-} catch (error) {
-  core.setFailed(error.message);
+  main().catch(err => core.setFailed(err.message));
+} catch (err) {
+  core.setFailed(err.message);
 }
